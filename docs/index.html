@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Matura Lösungen – Reading &amp; Listening B2</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --fg: #1b1f24; --muted: #6b7280; --line: #e3e6ea;
+    --accent: #2457d6; --accent-soft: #e8eefc; --ok: #13795b; --mark: #fff1a8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --card: #1a1f25; --fg: #e8eaed; --muted: #9aa3ad; --line: #2b323a;
+            --accent: #7aa2ff; --accent-soft: #1f2a44; --ok: #4fd1a5; --mark: #5a4b00; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: .95rem; }
+  .search { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; }
+  input[type=search] { width: 100%; font-size: 1.1rem; padding: 14px 16px; border-radius: 12px;
+         border: 1px solid var(--line); background: var(--card); color: var(--fg); outline: none; }
+  input[type=search]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .filters { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px;
+          padding: 4px 12px; font-size: .9rem; cursor: pointer; }
+  .chip[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #suggest { list-style: none; margin: 6px 0 0; padding: 0; background: var(--card);
+             border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  #suggest li { padding: 10px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+  #suggest li:first-child { border-top: 0; }
+  #suggest li[aria-selected=true], #suggest li:hover { background: var(--accent-soft); }
+  .s-title { font-weight: 600; }
+  .s-meta { font-size: .8rem; color: var(--muted); }
+  .s-snip { font-size: .88rem; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical; overflow: hidden; }
+  mark { background: var(--mark); color: inherit; border-radius: 3px; }
+  .task { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .task h2 { margin: 0 0 2px; font-size: 1.25rem; }
+  .task .meta { color: var(--muted); font-size: .85rem; margin-bottom: 12px; }
+  .task .intro { color: var(--muted); font-size: .9rem; border-left: 3px solid var(--line); padding-left: 10px; margin-bottom: 14px; }
+  ol.answers { list-style: none; padding: 0; margin: 0; }
+  ol.answers li { padding: 10px 0; border-top: 1px solid var(--line); }
+  ol.answers li:first-child { border-top: 0; }
+  .q { font-size: .9rem; color: var(--muted); }
+  .a { font-weight: 600; color: var(--ok); }
+  .a .tf { display: inline-block; min-width: 3.2em; }
+  .links { margin-top: 12px; font-size: .85rem; }
+  .links a { color: var(--accent); margin-right: 12px; }
+  .empty { color: var(--muted); margin-top: 16px; }
+  footer { color: var(--muted); font-size: .8rem; margin-top: 32px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Reading &amp; Listening B2 – Lösungen</h1>
+  <p class="sub">HTL-Aufgaben aus aufgabenpool.at. Tippe den Titel oder den ersten Satz ein.</p>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="z. B. „Global English“ oder „Last autumn, the Montreal…“"
+           autocomplete="off" autocapitalize="off" spellcheck="false" aria-controls="suggest" autofocus>
+    <div class="filters" role="group" aria-label="Fertigkeit">
+      <button class="chip" data-skill="" aria-pressed="true">Alle</button>
+      <button class="chip" data-skill="Reading" aria-pressed="false">Reading</button>
+      <button class="chip" data-skill="Listening" aria-pressed="false">Listening</button>
+    </div>
+    <ul id="suggest" role="listbox" hidden></ul>
+  </div>
+
+  <div id="out"></div>
+  <footer id="count"></footer>
+</main>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  const TASKS = window.TASKS || [];
+  const $q = document.getElementById('q');
+  const $s = document.getElementById('suggest');
+  const $out = document.getElementById('out');
+  let skill = '', results = [], sel = 0;
+
+  const norm = s => (s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[’‘`´]/g, "'").replace(/[“”„]/g, '"')
+    .replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const esc = s => (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // Precompute search fields
+  TASKS.forEach(t => {
+    t._title = norm(t.title);
+    t._intro = norm(t.intro);
+    t._all = norm([t.title, t.intro, (t.answers || []).map(a => a.q + ' ' + a.a).join(' '), t.extra || ''].join(' '));
+  });
+
+  function score(t, qn, words) {
+    if (skill && t.skill !== skill) return -1;
+    if (!qn) return 0;
+    let s = 0;
+    if (t._title.startsWith(qn)) s += 100;
+    else if (t._title.includes(qn)) s += 70;
+    if (t._intro.startsWith(qn)) s += 90;
+    else if (t._intro.includes(qn)) s += 60;
+    else if (t._all.includes(qn)) s += 40;
+    if (!s) {
+      // all words present somewhere
+      if (words.every(w => t._all.includes(w))) s = 10 + words.filter(w => t._title.includes(w)).length * 5;
+      else return -1;
+    }
+    return s;
+  }
+
+  function highlight(text, qn) {
+    const h = esc(text);
+    if (!qn) return h;
+    const words = qn.split(' ').filter(w => w.length > 1).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (!words.length) return h;
+    return h.replace(new RegExp('(' + words.join('|') + ')', 'gi'), '<mark>$1</mark>');
+  }
+
+  function snippet(t, qn) {
+    if (!qn || t._title.includes(qn)) return t.intro || '';
+    const src = [t.intro, ...(t.answers || []).map(a => a.q)].join(' … ');
+    return src;
+  }
+
+  function search() {
+    const qn = norm($q.value);
+    const words = qn.split(' ').filter(Boolean);
+    results = TASKS.map(t => [score(t, qn, words), t]).filter(x => x[0] >= 0)
+      .sort((a, b) => b[0] - a[0] || a[1].title.localeCompare(b[1].title)).map(x => x[1]);
+    if (!qn) { $s.hidden = true; return; }
+    sel = 0;
+    $s.innerHTML = results.slice(0, 8).map((t, i) =>
+      `<li role="option" data-i="${i}" aria-selected="${i === 0}">
+         <div class="s-title">${highlight(t.title, qn)}</div>
+         <div class="s-meta">${t.skill}${t.format ? ' · ' + esc(t.format) : ''}</div>
+         <div class="s-snip">${highlight(snippet(t, qn), qn)}</div>
+       </li>`).join('') || '<li>Nichts gefunden.</li>';
+    $s.hidden = false;
+  }
+
+  function show(t) {
+    $s.hidden = true;
+    const ans = (t.answers || []).map(a => {
+      let aText = esc(a.a);
+      if (a.tf) aText = `<span class="tf">${a.tf === 'T' ? 'True' : 'False'}</span> ${aText ? '– ' + aText : ''}`;
+      return `<li>${a.q ? `<div class="q">${esc(a.q)}</div>` : ''}<div class="a">${aText}</div></li>`;
+    }).join('');
+    $out.innerHTML = `<article class="task">
+      <h2>${esc(t.title)}</h2>
+      <div class="meta">${t.skill}${t.format ? ' · ' + esc(t.format) : ''}${t.id ? ' · Nr. ' + esc(t.id) : ''}</div>
+      ${t.intro ? `<div class="intro">${esc(t.intro)}</div>` : ''}
+      <ol class="answers">${ans || '<li>Keine Lösung verfügbar.</li>'}</ol>
+      ${t.note ? `<p class="q">${esc(t.note)}</p>` : ''}
+      <div class="links">
+        ${t.pdf ? `<a href="${esc(t.pdf)}" target="_blank" rel="noopener">Aufgabe (PDF)</a>` : ''}
+        ${t.lo ? `<a href="${esc(t.lo)}" target="_blank" rel="noopener">Lösung (PDF)</a>` : ''}
+      </div>
+    </article>`;
+    window.scrollTo({ top: 0 });
+  }
+
+  $q.addEventListener('input', search);
+  $q.addEventListener('keydown', e => {
+    const items = $s.querySelectorAll('li[data-i]');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      sel = Math.max(0, Math.min(items.length - 1, sel + (e.key === 'ArrowDown' ? 1 : -1)));
+      items.forEach((li, i) => li.setAttribute('aria-selected', i === sel));
+    } else if (e.key === 'Enter' && results[sel]) {
+      e.preventDefault(); $q.value = results[sel].title; show(results[sel]);
+    } else if (e.key === 'Escape') { $s.hidden = true; }
+  });
+  $s.addEventListener('click', e => {
+    const li = e.target.closest('li[data-i]');
+    if (li) { const t = results[+li.dataset.i]; $q.value = t.title; show(t); }
+  });
+  document.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === b));
+    skill = b.dataset.skill; search(); $q.focus();
+  }));
+
+  const nR = TASKS.filter(t => t.skill === 'Reading').length;
+  document.getElementById('count').textContent =
+    `${TASKS.length} Aufgaben (${nR} Reading, ${TASKS.length - nR} Listening) · Quelle: aufgabenpool.at (BMBWF)`;
+})();
+</script>
+</body>
+</html>
